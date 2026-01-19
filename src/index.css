@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@media print {
+  /* Hide UI elements */
+  button, 
+  .header-actions, 
+  nav, 
+  input, 
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Fix for the dimension error: Target Tailwind class with attribute selector */
+  [class*="min-w-\[1600px\]"] {
+    min-width: 100% !important;
+    width: 100% !important;
+  }
+
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+  
+  /* Show headers/signatures during print */
+  .print-header, .print-signatures {
+    display: flex !important;
+  }
+}
+
+/* Ensure print elements are hidden on screen */
+.print-header, .print-signatures {
+  display: none;
+}
