@@ -35,6 +35,17 @@ export default function ApprovedTable({ onBack }) {
 
   const handlePrint = () => { window.print(); };
 
+  // --- OPTIMIZATION 2: TIMESTAMPED FILENAME GENERATOR ---
+  const getLiveFileName = (baseName) => {
+    const now = new Date();
+    const dateStr = (now.getMonth() + 1).toString().padStart(2, '0') + 
+                    now.getDate().toString().padStart(2, '0') + 
+                    now.getFullYear();
+    const timeStr = now.getHours().toString().padStart(2, '0') + 
+                    now.getMinutes().toString().padStart(2, '0');
+    return `${baseName}_AsOf_${dateStr}_${timeStr}`;
+  };
+
   // --- HIGH-FIDELITY EXCELJS EXPORT ---
   const handleExportExcel = async () => {
     const workbook = new ExcelJS.Workbook();
@@ -93,7 +104,7 @@ export default function ApprovedTable({ onBack }) {
       const row = worksheet.addRow([text]);
       worksheet.mergeCells(`A${row.number}:I${row.number}`);
       row.font = { bold: true, color: { argb: 'FFFFFFFF' }, italic: true };
-      row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } }; // Slate-700
+      row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } }; 
     };
 
     const addPPARows = (items) => {
@@ -135,9 +146,10 @@ export default function ApprovedTable({ onBack }) {
     footerRow.getCell(7).numFmt = '"₱"#,##0.00';
     footerRow.getCell(6).alignment = { horizontal: 'right' };
 
-    // 7. Write and Save
+    // 7. Write and Save with Optimization 2: Timestamped Filename
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `Pililla_GAD_Plan_FY2027.xlsx`);
+    const finalFileName = getLiveFileName("Pililla_GAD_Plan_2027");
+    saveAs(new Blob([buffer]), `${finalFileName}.xlsx`);
   };
 
   const parseGenderIssue = (str) => {
@@ -189,19 +201,25 @@ export default function ApprovedTable({ onBack }) {
         </div>
       </div>
 
-      {/* TABLE UI (Remains the same as previous) */}
       <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 overflow-x-auto print:overflow-visible">
         <div className="p-8 print:p-0 min-w-[1600px] print:min-w-full">
-          {/* ... Header and Table HTML from previous version ... */}
           <div className="border-2 border-black p-6 mb-0">
             <h1 className="text-center text-xl font-black uppercase underline decoration-2 underline-offset-4">
               ANNUAL GENDER AND DEVELOPMENT (GAD) PLAN AND BUDGET <br /> FY 2027
             </h1>
-            {/* ... Metadata Grid ... */}
+            <div className="grid grid-cols-2 mt-6 text-xs font-bold">
+                <div>
+                    <p>Organization: Municipal Government of Pililla, Rizal</p>
+                    <p>Category: Local Government Unit</p>
+                </div>
+                <div className="text-right">
+                    <p className="text-indigo-600">Total Approved Budget: ₱{grandTotal.toLocaleString()}</p>
+                    <p className="text-slate-400 italic font-medium">Filename: {getLiveFileName("Registry")}</p>
+                </div>
+            </div>
           </div>
           <table className="w-full text-[10px] border-collapse border-2 border-black">
-             {/* ... Table THead & TBody ... */}
-             <thead className="bg-slate-100 uppercase font-black text-center">
+              <thead className="bg-slate-100 uppercase font-black text-center">
                 <tr className="divide-x divide-black">
                   <th className="p-2 border-b border-black w-48">GENDER ISSUE / GAD MANDATE (1)</th>
                   <th className="p-2 border-b border-black w-48">CAUSE OF ISSUE / DATA (2)</th>
@@ -225,7 +243,12 @@ export default function ApprovedTable({ onBack }) {
                 {agencyFocused.map(ppa => <PPALineItem key={ppa.id} ppa={ppa} parse={parseGenderIssue} />)}
               </tbody>
           </table>
-          {/* ... Signature Section ... */}
+          
+          <div className="mt-12 grid grid-cols-3 gap-12 text-center no-print">
+              <div className="border-t border-black pt-2 font-black uppercase text-[10px]">Prepared By: GAD Focal Point</div>
+              <div className="border-t border-black pt-2 font-black uppercase text-[10px]">Reviewed By: Municipal Budget Office</div>
+              <div className="border-t border-black pt-2 font-black uppercase text-[10px]">Approved By: Local Chief Executive</div>
+          </div>
         </div>
       </div>
     </div>
@@ -247,7 +270,7 @@ function PPALineItem({ ppa, parse }) {
       <td className="p-3">
         <div className="space-y-4">
           <div>
-            <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Target</p>
+            <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">Targets</p>
             {ppa.ppa_indicators?.map((ind, i) => (<p key={i} className="leading-tight mb-1">• {ind.target_text} {ind.indicator_text}</p>))}
           </div>
           <div className="pt-2 border-t border-slate-200">
@@ -260,11 +283,11 @@ function PPALineItem({ ppa, parse }) {
           </div>
         </div>
       </td>
-      <td className="p-3 font-mono font-black text-right">
+      <td className="p-3 font-mono font-black text-right whitespace-nowrap">
         ₱{(ppa.total_mooe + ppa.total_ps + ppa.total_co).toLocaleString()}
       </td>
       <td className="p-3 text-center font-bold">{ppa.ppa_budget_items?.[0]?.fund_type || 'MOOE'}</td>
-      <td className="p-3 text-center uppercase font-bold text-[9px]">{ppa.office_name}</td>
+      <td className="p-3 text-center uppercase font-bold text-[9px] leading-tight">{ppa.office_name}</td>
     </tr>
   );
 }

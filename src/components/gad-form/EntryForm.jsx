@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { 
   Plus, Trash2, Save, Target, Award, ArrowLeft, Send, 
-  Database, FileText, BarChart3, Layers 
+  Database, FileText, BarChart3, Layers, AlertTriangle, MessageCircle 
 } from 'lucide-react';
 
 export default function EntryForm({ session, officeName, onCancel, initialData }) {
@@ -15,7 +15,7 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
 
   const [formData, setFormData] = useState({
     focus_type: initialData?.focus_type || 'CLIENT-FOCUSED',
-    ppa_category: initialData?.ppa_category || 'Client-Focused', // Crucial for Registry Sorting
+    ppa_category: initialData?.ppa_category || 'Client-Focused', 
     category_type: initialData?.category_type || 'GAD Mandated Program',
     gad_objective: initialData?.gad_objective || '',
     relevant_program: initialData?.relevant_program || '',
@@ -25,6 +25,9 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
   const [indicators, setIndicators] = useState([{ indicator_text: '', target_text: '' }]);
   const [budgetItems, setBudgetItems] = useState([{ item_description: '', amount: 0, fund_type: 'MOOE' }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // OPTIMIZATION 1b: Pull Sectional Remarks from the reviewer
+  const remarks = initialData?.sectional_comments || {};
 
   // Parse existing data if editing or re-rendering
   useEffect(() => {
@@ -56,16 +59,26 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
     return acc;
   }, { mooe: 0, ps: 0, co: 0 });
 
+  // OPTIMIZATION 1b: Remark Badge Helper
+  const RemarkBadge = ({ text }) => {
+    if (!text) return null;
+    return (
+      <div className="mt-2 flex items-start gap-2 bg-amber-50 border border-amber-200 p-3 rounded-xl animate-in slide-in-from-top-2 duration-300">
+        <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+        <p className="text-[10px] font-bold text-amber-800 leading-tight">
+          REVISION NOTE: <span className="font-normal italic">{text}</span>
+        </p>
+      </div>
+    );
+  };
+
   const handleSave = async (statusType) => {
-    // Validate required fields
     if (!genderIssueDetails.statement || !formData.gad_activity) {
       alert("Please fill in the Gender Issue and GAD Activity.");
       return;
     }
 
     setIsSubmitting(true);
-    
-    // Combine structured details into a single string for the database
     const combinedGenderIssue = `Issue: ${genderIssueDetails.statement}\nData: ${genderIssueDetails.data_evidence}\nSource: ${genderIssueDetails.source}`;
     
     try {
@@ -83,43 +96,28 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
       };
       
       if (ppaId) {
-        // Update existing record
-        const { error: updateError } = await supabase
-          .from('gad_proposals')
-          .update(submissionData)
-          .eq('id', ppaId);
-        
+        const { error: updateError } = await supabase.from('gad_proposals').update(submissionData).eq('id', ppaId);
         if (updateError) throw updateError;
-        
-        // Refresh related tables by deleting and re-inserting
         await supabase.from('ppa_indicators').delete().eq('ppa_id', ppaId);
         await supabase.from('ppa_budget_items').delete().eq('ppa_id', ppaId);
       } else {
-        // Insert new record
-        const { data, error } = await supabase
-          .from('gad_proposals')
-          .insert([submissionData])
-          .select();
-        
+        const { data, error } = await supabase.from('gad_proposals').insert([submissionData]).select();
         if (error) throw error;
         ppaId = data[0].id;
       }
       
-      // Batch insert indicators and budget items
-      await supabase.from('ppa_indicators').insert(indicators.map(ind => ({ 
-        indicator_text: ind.indicator_text, 
-        target_text: ind.target_text, 
-        ppa_id: ppaId 
-      })));
+      await supabase.from('ppa_indicators').insert(indicators.map(ind => ({ ...ind, ppa_id: ppaId })));
+      await supabase.from('ppa_budget_items').insert(budgetItems.map(item => ({ ...item, ppa_id: ppaId })));
 
-      await supabase.from('ppa_budget_items').insert(budgetItems.map(item => ({ 
-        item_description: item.item_description, 
-        amount: item.amount, 
-        fund_type: item.fund_type, 
-        ppa_id: ppaId 
-      })));
+      // OPTIMIZATION 3: Add to History Tracer
+      await supabase.from('ppa_history').insert([{
+        ppa_id: ppaId,
+        action_by: officeName,
+        action_type: statusType,
+        change_summary: `PPA record ${statusType === 'Submitted' ? 'submitted for verification' : 'saved as draft'}.`
+      }]);
       
-      onCancel(); // Return to dashboard
+      onCancel(); 
     } catch (err) { 
       alert("Error saving: " + err.message); 
     } finally { 
@@ -133,6 +131,17 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
         <ArrowLeft size={16} /> Back to Dashboard
       </button>
 
+      {/* REVISION GUIDANCE HEADER */}
+      {initialData?.status === 'For Revision' && (
+        <div className="mb-10 bg-amber-600 text-white p-6 rounded-[2.5rem] flex items-center gap-6 shadow-xl animate-in slide-in-from-left duration-500">
+            <MessageCircle size={32} className="text-amber-200" />
+            <div>
+                <h3 className="font-black uppercase tracking-widest text-sm">Action Required: Revisions Noted</h3>
+                <p className="text-xs text-amber-50 font-medium">Please review the specific remarks highlighted in orange throughout the form before re-submitting.</p>
+            </div>
+        </div>
+      )}
+
       <div className="space-y-12 pb-20">
         {/* SECTION 01: CLASSIFICATION */}
         <section className="space-y-6">
@@ -142,7 +151,7 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
           </h2>
           <div className="grid md:grid-cols-3 gap-8">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PPA Category (Registry Grouping)</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PPA Category</label>
               <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-bold outline-none focus:border-indigo-500 text-indigo-600 appearance-none"
                 value={formData.ppa_category} onChange={(e) => setFormData({...formData, ppa_category: e.target.value})}>
                 <option value="Client-Focused">A. Client-Focused (External)</option>
@@ -158,12 +167,10 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mandate Category</label>
-              <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-semibold outline-none focus:border-indigo-500 appearance-none"
-                value={formData.category_type} onChange={(e) => setFormData({...formData, category_type: e.target.value})}>
-                <option value="GAD Mandated Program">GAD Mandated Program</option>
-                <option value="Identified Gender Issue">Identified Gender Issue</option>
-              </select>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">GAD Activity Name</label>
+              <input required className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-semibold outline-none focus:border-indigo-500"
+                value={formData.gad_activity} onChange={(e) => setFormData({...formData, gad_activity: e.target.value})} />
+              <RemarkBadge text={remarks.activities} />
             </div>
           </div>
         </section>
@@ -186,6 +193,7 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
                 value={genderIssueDetails.statement} 
                 onChange={(e) => setGenderIssueDetails({...genderIssueDetails, statement: e.target.value})} 
               />
+              <RemarkBadge text={remarks.gender_issue} />
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
@@ -218,19 +226,7 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">GAD Result Statement / Objective</label>
             <textarea required className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl p-6 focus:border-indigo-500 outline-none font-medium resize-none min-h-[120px]"
               value={formData.gad_objective} onChange={(e) => setFormData({...formData, gad_objective: e.target.value})} />
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-8">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">LGU Program (MFO/PAP)</label>
-              <input required className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-semibold outline-none focus:border-indigo-500"
-                value={formData.relevant_program} onChange={(e) => setFormData({...formData, relevant_program: e.target.value})} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">GAD Activity</label>
-              <input required className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-semibold outline-none focus:border-indigo-500"
-                value={formData.gad_activity} onChange={(e) => setFormData({...formData, gad_activity: e.target.value})} />
-            </div>
+            <RemarkBadge text={remarks.objectives} />
           </div>
         </section>
 
@@ -264,6 +260,7 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
                 </button>
               </div>
             ))}
+            <RemarkBadge text={remarks.indicators} />
           </div>
         </section>
 
@@ -312,6 +309,7 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">Total Estimated GAD Amount</p>
             <p className="text-4xl font-mono font-black text-indigo-900">₱ {(totals.mooe + totals.ps + totals.co).toLocaleString()}</p>
           </div>
+          <RemarkBadge text={remarks.budget} />
         </section>
 
         {/* SUBMISSION ACTIONS */}

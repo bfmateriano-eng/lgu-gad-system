@@ -3,8 +3,8 @@ import { supabase } from '../../lib/supabaseClient';
 import { 
   CheckCircle, AlertCircle, Eye, Search, 
   Building2, MessageSquare, ArrowLeft, RefreshCw, 
-  Target, List, Calculator, Printer, Calendar,
-  BrainCircuit, ShieldAlert, Zap, Landmark
+  Target, List, Calculator, Calendar,
+  BrainCircuit, ShieldAlert, Zap, Layers, History, Edit3
 } from 'lucide-react';
 
 export default function ReviewerDashboard({ session }) {
@@ -13,9 +13,15 @@ export default function ReviewerDashboard({ session }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProposal, setSelectedProposal] = useState(null);
   const [details, setDetails] = useState({ indicators: [], budget: [] });
-  const [comment, setComment] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [history, setHistory] = useState([]);
   
+  // Optimization 1: Sectional Review & Editing States
+  const [editedPpa, setEditedPpa] = useState({});
+  const [sectionalComments, setSectionalComments] = useState({
+    gender_issue: '', objectives: '', activities: '', indicators: '', budget: ''
+  });
+
   // AI Assessment States
   const [aiScore, setAiScore] = useState(0);
   const [aiFeedback, setAiFeedback] = useState([]);
@@ -27,10 +33,27 @@ export default function ReviewerDashboard({ session }) {
   useEffect(() => {
     if (selectedProposal) {
       const fetchDetails = async () => {
+        // Fetch Sub-details
         const { data: ind } = await supabase.from('ppa_indicators').select('*').eq('ppa_id', selectedProposal.id);
         const { data: bud } = await supabase.from('ppa_budget_items').select('*').eq('ppa_id', selectedProposal.id);
+        
+        // Optimization 3: Fetch Tracer History
+        const { data: hist } = await supabase.from('ppa_history').select('*').eq('ppa_id', selectedProposal.id).order('created_at', { ascending: false });
+        
         setDetails({ indicators: ind || [], budget: bud || [] });
-        setComment(selectedProposal.reviewer_comments || '');
+        setHistory(hist || []);
+        
+        // Optimization 1a: Initialize editing state with current values for "Mainstreaming"
+        setEditedPpa({
+          gad_activity: selectedProposal.gad_activity,
+          gad_objective: selectedProposal.gad_objective,
+          gender_issue: selectedProposal.gender_issue
+        });
+
+        // Optimization 1b: Initialize sectional comments
+        setSectionalComments(selectedProposal.sectional_comments || {
+          gender_issue: '', objectives: '', activities: '', indicators: '', budget: ''
+        });
         
         runAIAudit(selectedProposal, ind || []);
       };
@@ -43,18 +66,11 @@ export default function ReviewerDashboard({ session }) {
     let feedback = [];
     if (!proposal.gad_objective || proposal.gad_objective.length < 20) { 
       score -= 20; 
-      feedback.push("Objective is too brief or missing for a formal GAD plan."); 
+      feedback.push("Objective is too brief."); 
     }
     if (indicators.length === 0) { 
       score -= 30; 
       feedback.push("CRITICAL: Missing Success Indicators."); 
-    }
-    const issueWords = proposal.gender_issue?.toLowerCase().split(' ') || [];
-    const objWords = proposal.gad_objective?.toLowerCase().split(' ') || [];
-    const intersection = issueWords.filter(word => word.length > 4 && objWords.includes(word));
-    if (intersection.length === 0) { 
-      score -= 15; 
-      feedback.push("Low Alignment: Objective words don't match the Issue."); 
     }
     setAiScore(score);
     setAiFeedback(feedback);
@@ -71,33 +87,39 @@ export default function ReviewerDashboard({ session }) {
     setLoading(false);
   }
 
-  // UPDATED: Added error handling and verification select
   const handleUpdateStatus = async (newStatus) => {
     if (!selectedProposal) return;
     setIsProcessing(true);
     
     try {
+      // 1. Update the PPA (Applying Mainstreaming & Sectional Comments)
       const { data, error } = await supabase
         .from('gad_proposals')
         .update({ 
           status: newStatus, 
-          reviewer_comments: comment,
+          gad_activity: editedPpa.gad_activity,
+          gad_objective: editedPpa.gad_objective,
+          gender_issue: editedPpa.gender_issue,
+          sectional_comments: sectionalComments,
           updated_at: new Date().toISOString() 
         })
         .eq('id', selectedProposal.id)
-        .select(); // Verify the update worked
+        .select();
 
       if (error) throw error;
 
-      if (data && data.length > 0) {
-        alert(`Success! PPA is now marked as ${newStatus}`);
-        setSelectedProposal(null);
-        fetchAllProposals();
-      } else {
-        alert("Update failed: No rows were changed. This usually means you don't have permission to edit this record.");
-      }
+      // 2. Optimization 3: Add to History Tracer
+      await supabase.from('ppa_history').insert([{
+        ppa_id: selectedProposal.id,
+        action_by: "GAD UNIT AUDITOR",
+        action_type: newStatus,
+        change_summary: `PPA status changed to ${newStatus}. Sectional remarks saved.`
+      }]);
+
+      alert(`Success! PPA is now ${newStatus}`);
+      setSelectedProposal(null);
+      fetchAllProposals();
     } catch (err) {
-      console.error("Status Update Error:", err.message);
       alert("Database Error: " + err.message);
     } finally {
       setIsProcessing(false);
@@ -121,42 +143,77 @@ export default function ReviewerDashboard({ session }) {
             </button>
             <div className="flex gap-4">
                <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border-2 font-black text-xs uppercase ${aiScore > 70 ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-red-50 border-red-200 text-red-600'}`}>
-                <BrainCircuit size={16} /> AI Logic Score: {aiScore}%
+                <BrainCircuit size={16} /> Logic Score: {aiScore}%
               </div>
             </div>
           </div>
 
           <div className="grid lg:grid-cols-4 gap-8">
             <div className="lg:col-span-3 space-y-8">
+              {/* EDITABLE HEADER (MAINSTREAMING) */}
               <div className="bg-white border-2 border-slate-100 rounded-[3rem] p-10 shadow-xl space-y-10">
                 <div className="border-b pb-6 flex justify-between items-start">
-                  <div>
-                    <h2 className="text-3xl font-black text-indigo-950 tracking-tighter leading-tight">{selectedProposal.gad_activity}</h2>
-                    <p className="font-bold text-indigo-600 uppercase text-xs mt-2 tracking-widest flex items-center gap-2">
+                  <div className="flex-grow pr-10">
+                    <label className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-1 block">Activity Title (Editable)</label>
+                    <input 
+                      className="text-3xl font-black text-indigo-950 tracking-tighter leading-tight w-full bg-slate-50 border-none outline-none focus:ring-2 ring-indigo-500 rounded-xl px-4 py-2"
+                      value={editedPpa.gad_activity}
+                      onChange={(e) => setEditedPpa({...editedPpa, gad_activity: e.target.value})}
+                    />
+                    <p className="font-bold text-indigo-600 uppercase text-xs mt-4 tracking-widest flex items-center gap-2">
                        <Building2 size={14}/> {selectedProposal.office_name}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Submission Status</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Status</p>
                     <span className="bg-indigo-50 text-indigo-700 px-4 py-1 rounded-full text-[10px] font-black uppercase border border-indigo-100">{selectedProposal.status}</span>
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-8">
-                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Target size={14}/> Gender Issue</h4>
-                        <p className="text-sm text-slate-700 font-medium leading-relaxed">{selectedProposal.gender_issue}</p>
+                {/* SECTIONAL INPUTS & REMARKS */}
+                <div className="grid gap-8">
+                    {/* GENDER ISSUE */}
+                    <div className="space-y-4">
+                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Target size={14}/> Gender Issue</h4>
+                            <textarea 
+                                className="w-full bg-transparent border-none outline-none text-sm text-slate-700 font-medium leading-relaxed resize-none min-h-[80px]"
+                                value={editedPpa.gender_issue}
+                                onChange={(e) => setEditedPpa({...editedPpa, gender_issue: e.target.value})}
+                            />
+                        </div>
+                        <input 
+                            placeholder="Remarks for Gender Issue..."
+                            className="w-full text-[11px] font-bold text-indigo-600 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 outline-none"
+                            value={sectionalComments.gender_issue}
+                            onChange={(e) => setSectionalComments({...sectionalComments, gender_issue: e.target.value})}
+                        />
                     </div>
-                    <div className="p-6 bg-indigo-50/30 rounded-3xl border border-indigo-50 space-y-4">
-                        <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><Zap size={14}/> GAD Objective</h4>
-                        <p className="text-sm font-bold text-indigo-900 leading-relaxed italic">"{selectedProposal.gad_objective || "No Objective Provided"}"</p>
+
+                    {/* OBJECTIVE */}
+                    <div className="space-y-4">
+                        <div className="p-6 bg-indigo-50/30 rounded-3xl border border-indigo-50 space-y-4">
+                            <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><Zap size={14}/> GAD Objective</h4>
+                            <textarea 
+                                className="w-full bg-transparent border-none outline-none text-sm font-bold text-indigo-900 leading-relaxed italic resize-none min-h-[80px]"
+                                value={editedPpa.gad_objective}
+                                onChange={(e) => setEditedPpa({...editedPpa, gad_objective: e.target.value})}
+                            />
+                        </div>
+                        <input 
+                            placeholder="Remarks for Objective..."
+                            className="w-full text-[11px] font-bold text-indigo-600 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 outline-none"
+                            value={sectionalComments.objectives}
+                            onChange={(e) => setSectionalComments({...sectionalComments, objectives: e.target.value})}
+                        />
                     </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-12">
+                {/* INDICATORS & FULL BUDGET TABLE */}
+                <div className="space-y-12 pt-8">
                     <div className="space-y-4">
                         <h4 className="text-[11px] font-black text-indigo-950 uppercase tracking-widest flex items-center gap-2"><List size={16} className="text-indigo-400"/> Success Indicators</h4>
-                        <div className="space-y-3">
+                        <div className="grid md:grid-cols-2 gap-4">
                             {details.indicators.map((ind, i) => (
                             <div key={i} className="flex justify-between items-center p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
                                 <span className="text-sm font-semibold text-slate-600">{ind.indicator_text}</span>
@@ -164,105 +221,101 @@ export default function ReviewerDashboard({ session }) {
                             </div>
                             ))}
                         </div>
+                        <input 
+                            placeholder="Remarks for Indicators..."
+                            className="w-full text-[11px] font-bold text-indigo-600 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 outline-none"
+                            value={sectionalComments.indicators}
+                            onChange={(e) => setSectionalComments({...sectionalComments, indicators: e.target.value})}
+                        />
                     </div>
 
+                    {/* FULL BUDGET BREAKDOWN TABLE */}
                     <div className="space-y-4">
-                        <h4 className="text-[11px] font-black text-indigo-950 uppercase tracking-widest flex items-center gap-2"><Calculator size={16} className="text-indigo-400"/> Detailed Budget</h4>
-                        <div className="bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm">
+                        <h4 className="text-[11px] font-black text-indigo-950 uppercase tracking-widest flex items-center gap-2">
+                            <Calculator size={16} className="text-indigo-400"/> Detailed Budget Breakdown
+                        </h4>
+                        <div className="bg-white border-2 border-slate-100 rounded-[2rem] overflow-hidden shadow-sm">
                             <table className="w-full text-left text-sm">
                                 <thead className="bg-slate-50 border-b">
                                     <tr className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                        <th className="px-5 py-3">Expense</th>
-                                        <th className="px-5 py-3">Fund</th>
-                                        <th className="px-5 py-3 text-right">Amount</th>
+                                        <th className="px-6 py-4">Expense Description</th>
+                                        <th className="px-6 py-4">Fund Type</th>
+                                        <th className="px-6 py-4 text-right">Amount</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody className="divide-y divide-slate-50">
                                     {details.budget.map((item, i) => (
-                                    <tr key={i} className="border-b border-slate-50 last:border-0">
-                                        <td className="px-5 py-3 font-medium text-slate-600">{item.item_description}</td>
-                                        <td className="px-5 py-3 text-[10px] font-black text-indigo-500">{item.fund_type}</td>
-                                        <td className="px-5 py-3 text-right font-mono font-bold">₱{item.amount.toLocaleString()}</td>
-                                    </tr>
+                                        <tr key={i}>
+                                            <td className="px-6 py-4 font-semibold text-slate-700">{item.item_description}</td>
+                                            <td className="px-6 py-4"><span className="text-[9px] font-black bg-indigo-50 text-indigo-600 px-3 py-1 rounded-lg border border-indigo-100">{item.fund_type}</span></td>
+                                            <td className="px-6 py-4 text-right font-mono font-bold">₱{item.amount.toLocaleString()}</td>
+                                        </tr>
                                     ))}
                                 </tbody>
+                                <tfoot>
+                                    <tr className="bg-indigo-900 text-white font-black">
+                                        <td colSpan="2" className="px-6 py-4 text-[10px] uppercase tracking-widest">Total GAD Request</td>
+                                        <td className="px-6 py-4 text-right text-xl font-mono">₱{(selectedProposal.total_mooe + selectedProposal.total_ps + selectedProposal.total_co).toLocaleString()}</td>
+                                    </tr>
+                                </tfoot>
                             </table>
-                            <div className="bg-indigo-900 text-white p-6 flex justify-between items-center">
-                                <span className="text-[10px] font-black uppercase tracking-widest">Total GAD Request</span>
-                                <span className="text-2xl font-mono font-black">₱{(selectedProposal.total_mooe + selectedProposal.total_ps + selectedProposal.total_co).toLocaleString()}</span>
-                            </div>
                         </div>
+                        <input 
+                            placeholder="Remarks for Budgeting..."
+                            className="w-full text-[11px] font-bold text-indigo-600 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 outline-none"
+                            value={sectionalComments.budget}
+                            onChange={(e) => setSectionalComments({...sectionalComments, budget: e.target.value})}
+                        />
                     </div>
                 </div>
               </div>
 
-              <div className="bg-white border-2 border-indigo-50 rounded-[3rem] p-10 shadow-xl space-y-6">
-                <div className="flex items-center gap-2 text-indigo-950 font-black text-sm uppercase tracking-tighter mb-4">
-                    <MessageSquare size={18} className="text-indigo-400"/> Reviewer Assessment & Comments
-                </div>
-                <div className="p-6 bg-indigo-50/50 rounded-2xl border-2 border-indigo-100">
-                   <textarea 
-                    className="w-full p-4 rounded-xl border-none outline-none focus:ring-2 ring-indigo-500 bg-white min-h-[120px] font-medium"
-                    placeholder="Enter your professional assessment here..."
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <button 
-                    disabled={isProcessing}
-                    onClick={() => handleUpdateStatus('Approved')} 
-                    className="bg-emerald-600 text-white py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-3 hover:bg-emerald-700 active:scale-95 transition-all shadow-lg shadow-emerald-100 disabled:bg-slate-300"
-                  >
-                    <CheckCircle size={24}/> APPROVE PPA
-                  </button>
-                  <button 
-                    disabled={isProcessing}
-                    onClick={() => handleUpdateStatus('For Revision')} 
-                    className="bg-amber-500 text-white py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-3 hover:bg-amber-600 active:scale-95 transition-all shadow-lg shadow-amber-100 disabled:bg-slate-300"
-                  >
-                    <AlertCircle size={24}/> REQUIRE REVISION
-                  </button>
-                </div>
+              {/* ACTION BUTTONS */}
+              <div className="grid grid-cols-2 gap-4">
+                <button 
+                  disabled={isProcessing}
+                  onClick={() => handleUpdateStatus('Approved')} 
+                  className="bg-emerald-600 text-white py-6 rounded-3xl font-black text-lg flex items-center justify-center gap-3 hover:bg-emerald-700 active:scale-95 transition-all shadow-xl disabled:bg-slate-300"
+                >
+                  <CheckCircle size={24}/> APPROVE & MAINSTREAM
+                </button>
+                <button 
+                  disabled={isProcessing}
+                  onClick={() => handleUpdateStatus('For Revision')} 
+                  className="bg-amber-500 text-white py-6 rounded-3xl font-black text-lg flex items-center justify-center gap-3 hover:bg-amber-600 active:scale-95 transition-all shadow-xl disabled:bg-slate-300"
+                >
+                  <AlertCircle size={24}/> RETURN FOR REVISION
+                </button>
               </div>
             </div>
 
-            <div className="lg:col-span-1">
-              <div className="bg-[#1e1b4b] text-white rounded-[2.5rem] p-8 shadow-2xl space-y-6 sticky top-8">
+            {/* SIDEBAR */}
+            <div className="lg:col-span-1 space-y-6">
+              <div className="bg-[#1e1b4b] text-white rounded-[2.5rem] p-8 shadow-2xl space-y-6">
                 <div className="flex items-center gap-3 border-b border-indigo-800 pb-4">
                   <Zap className="text-amber-400 fill-amber-400" size={24} />
                   <h3 className="font-black uppercase tracking-widest text-xs">AI Smart Auditor</h3>
                 </div>
-                
-                <div className="space-y-6 text-center">
-                    <div>
-                        <p className="text-[9px] font-black text-indigo-300 uppercase tracking-[0.2em] mb-2">Compliance Score</p>
-                        <div className="text-5xl font-black text-amber-400">{aiScore}%</div>
-                    </div>
+                <div className="text-center">
+                    <p className="text-[9px] font-black text-indigo-300 uppercase tracking-[0.2em] mb-2">Compliance Score</p>
+                    <div className="text-5xl font-black text-amber-400">{aiScore}%</div>
+                </div>
+              </div>
 
-                    <div className="space-y-4 text-left">
-                        <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest flex items-center gap-2">
-                            <ShieldAlert size={14}/> Critical Observations
-                        </p>
-                        {aiFeedback.length === 0 ? (
-                            <p className="text-xs text-emerald-400 font-bold bg-emerald-400/10 p-4 rounded-xl">Alignment check passed.</p>
-                        ) : (
-                            <div className="space-y-2">
-                                {aiFeedback.map((fb, i) => (
-                                    <div key={i} className="text-[11px] text-indigo-100 bg-white/5 p-3 rounded-xl border border-white/10 leading-relaxed font-medium italic">
-                                        • {fb}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    <button 
-                        onClick={() => setComment(prev => prev + " AI Suggestion: " + aiFeedback.join(' '))}
-                        className="w-full py-3 bg-indigo-500/20 border border-indigo-400 text-indigo-200 rounded-xl text-[10px] font-black uppercase hover:bg-indigo-500/40 transition-all"
-                    >
-                        Sync AI Findings to Comments
-                    </button>
+              <div className="bg-white border-2 border-slate-100 rounded-[2.5rem] p-8 shadow-xl space-y-6">
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                  <History className="text-indigo-600" size={20} />
+                  <h3 className="font-black uppercase tracking-widest text-[10px] text-slate-900">PPA Tracer Log</h3>
+                </div>
+                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+                    {history.map((h, i) => (
+                        <div key={i} className="relative pl-6 border-l-2 border-indigo-100 py-1">
+                            <div className="absolute -left-[9px] top-2 w-4 h-4 rounded-full bg-indigo-600 border-4 border-white"></div>
+                            <p className="text-[10px] font-black text-indigo-900 uppercase">{h.action_type}</p>
+                            <p className="text-[9px] text-slate-500 font-medium">{new Date(h.created_at).toLocaleString()}</p>
+                            <p className="text-[10px] text-slate-400 mt-1 leading-tight">{h.change_summary}</p>
+                        </div>
+                    ))}
                 </div>
               </div>
             </div>
@@ -273,7 +326,7 @@ export default function ReviewerDashboard({ session }) {
           <div className="flex justify-between items-center mb-10">
             <div>
               <h2 className="text-4xl font-black text-indigo-950 uppercase tracking-tighter">Review Console</h2>
-              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Master Submission List</p>
+              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Awaiting GAD Unit Verification</p>
             </div>
             <div className="flex items-center gap-4">
               <div className="relative">
@@ -284,10 +337,7 @@ export default function ReviewerDashboard({ session }) {
                   value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <button 
-                onClick={fetchAllProposals}
-                className="p-4 bg-white border-2 border-slate-100 rounded-2xl text-slate-400 hover:text-indigo-600 transition-all shadow-sm"
-              >
+              <button onClick={fetchAllProposals} className="p-4 bg-white border-2 border-slate-100 rounded-2xl text-slate-400 hover:text-indigo-600 transition-all shadow-sm">
                 <RefreshCw size={20} />
               </button>
             </div>
