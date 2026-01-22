@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import UserManagement from '../admin/UserManagement'; // Ensure path is correct
 import { 
   CheckCircle, AlertCircle, Eye, Search, 
   Building2, MessageSquare, ArrowLeft, RefreshCw, 
   Target, List, Calculator, Calendar,
-  BrainCircuit, ShieldAlert, Zap, Layers, History, Edit3
+  BrainCircuit, ShieldAlert, Zap, Layers, History, Edit3,
+  Users, ClipboardList, LogOut
 } from 'lucide-react';
 
-export default function ReviewerDashboard({ session }) {
+export default function ReviewerDashboard({ session, onSignOut }) {
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -16,6 +18,9 @@ export default function ReviewerDashboard({ session }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [history, setHistory] = useState([]);
   
+  // View Toggle: 'review' or 'users'
+  const [currentView, setCurrentView] = useState('review');
+
   // Optimization 1: Sectional Review & Editing States
   const [editedPpa, setEditedPpa] = useState({});
   const [sectionalComments, setSectionalComments] = useState({
@@ -43,7 +48,7 @@ export default function ReviewerDashboard({ session }) {
         setDetails({ indicators: ind || [], budget: bud || [] });
         setHistory(hist || []);
         
-        // Optimization 1a: Initialize editing state with current values for "Mainstreaming"
+        // Optimization 1a: Initialize editing state with current values
         setEditedPpa({
           gad_activity: selectedProposal.gad_activity,
           gad_objective: selectedProposal.gad_objective,
@@ -131,12 +136,24 @@ export default function ReviewerDashboard({ session }) {
     p.gad_activity?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (loading) return <div className="p-20 text-center animate-pulse font-black uppercase text-indigo-900">Loading Submissions...</div>;
+  if (loading) return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="text-center animate-pulse">
+        <RefreshCw size={48} className="text-indigo-600 animate-spin mx-auto mb-4" />
+        <p className="font-black uppercase text-indigo-900 tracking-widest">Loading Submissions...</p>
+      </div>
+    </div>
+  );
+
+  // RETURN USER MANAGEMENT VIEW
+  if (currentView === 'users') {
+    return <UserManagement onBack={() => setCurrentView('review')} />;
+  }
 
   return (
-    <div className="p-8 md:p-12 space-y-8 animate-in fade-in duration-500">
+    <div className="p-8 md:p-12 space-y-8 animate-in fade-in duration-500 bg-slate-50 min-h-screen">
       {selectedProposal ? (
-        <div className="space-y-8 animate-in zoom-in-95 duration-300 pb-20">
+        <div className="max-w-7xl mx-auto space-y-8 animate-in zoom-in-95 duration-300 pb-20">
           <div className="flex justify-between items-center">
             <button onClick={() => setSelectedProposal(null)} className="flex items-center gap-2 text-slate-400 hover:text-indigo-600 font-bold text-xs uppercase tracking-widest transition-all">
               <ArrowLeft size={16}/> Back to List
@@ -172,7 +189,6 @@ export default function ReviewerDashboard({ session }) {
 
                 {/* SECTIONAL INPUTS & REMARKS */}
                 <div className="grid gap-8">
-                    {/* GENDER ISSUE */}
                     <div className="space-y-4">
                         <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
                             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Target size={14}/> Gender Issue</h4>
@@ -190,7 +206,6 @@ export default function ReviewerDashboard({ session }) {
                         />
                     </div>
 
-                    {/* OBJECTIVE */}
                     <div className="space-y-4">
                         <div className="p-6 bg-indigo-50/30 rounded-3xl border border-indigo-50 space-y-4">
                             <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><Zap size={14}/> GAD Objective</h4>
@@ -209,7 +224,6 @@ export default function ReviewerDashboard({ session }) {
                     </div>
                 </div>
 
-                {/* INDICATORS & FULL BUDGET TABLE */}
                 <div className="space-y-12 pt-8">
                     <div className="space-y-4">
                         <h4 className="text-[11px] font-black text-indigo-950 uppercase tracking-widest flex items-center gap-2"><List size={16} className="text-indigo-400"/> Success Indicators</h4>
@@ -229,7 +243,6 @@ export default function ReviewerDashboard({ session }) {
                         />
                     </div>
 
-                    {/* FULL BUDGET BREAKDOWN TABLE */}
                     <div className="space-y-4">
                         <h4 className="text-[11px] font-black text-indigo-950 uppercase tracking-widest flex items-center gap-2">
                             <Calculator size={16} className="text-indigo-400"/> Detailed Budget Breakdown
@@ -322,46 +335,86 @@ export default function ReviewerDashboard({ session }) {
           </div>
         </div>
       ) : (
-        <>
-          <div className="flex justify-between items-center mb-10">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
             <div>
-              <h2 className="text-4xl font-black text-indigo-950 uppercase tracking-tighter">Review Console</h2>
-              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Awaiting GAD Unit Verification</p>
+              <h2 className="text-5xl font-black text-indigo-950 uppercase tracking-tighter">Review Console</h2>
+              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-2 flex items-center gap-2">
+                <ShieldAlert size={14} className="text-indigo-500"/> Awaiting GAD Unit Verification
+              </p>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                <input 
-                  type="text" placeholder="Search by office..."
-                  className="pl-12 pr-6 py-4 bg-white border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500 text-sm font-semibold w-72 shadow-sm"
-                  value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <button onClick={fetchAllProposals} className="p-4 bg-white border-2 border-slate-100 rounded-2xl text-slate-400 hover:text-indigo-600 transition-all shadow-sm">
-                <RefreshCw size={20} />
-              </button>
+            
+            <div className="flex items-center gap-3">
+               {/* VIEW TOGGLE BUTTONS */}
+               <button 
+                onClick={() => setCurrentView('review')}
+                className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase transition-all ${currentView === 'review' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border-2 border-slate-100 hover:border-indigo-200'}`}
+               >
+                 <ClipboardList size={18}/> PPAs
+               </button>
+               <button 
+                onClick={() => setCurrentView('users')}
+                className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase transition-all ${currentView === 'users' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border-2 border-slate-100 hover:border-indigo-200'}`}
+               >
+                 <Users size={18}/> Users
+               </button>
+               <button onClick={onSignOut} className="p-3 bg-red-50 text-red-600 rounded-2xl hover:bg-red-600 hover:text-white transition-all">
+                 <LogOut size={20} />
+               </button>
             </div>
           </div>
+
+          <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-slate-100 mb-10 flex flex-col md:flex-row gap-4 justify-between items-center">
+            <div className="relative w-full md:w-96">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input 
+                type="text" placeholder="Search by office or activity..."
+                className="w-full pl-12 pr-6 py-4 bg-slate-50 border-none rounded-2xl outline-none focus:ring-2 ring-indigo-500 text-sm font-bold shadow-inner"
+                value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <button onClick={fetchAllProposals} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all">
+              <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
+            </button>
+          </div>
+
           <div className="grid gap-6">
-            {filtered.map(item => (
-              <div key={item.id} onClick={() => setSelectedProposal(item)} className="group bg-white border-2 border-slate-50 p-8 rounded-[2.5rem] cursor-pointer hover:border-indigo-400 transition-all hover:shadow-2xl flex items-center justify-between">
+            {filtered.length > 0 ? filtered.map(item => (
+              <div key={item.id} onClick={() => setSelectedProposal(item)} className="group bg-white border-2 border-slate-100 p-8 rounded-[3rem] cursor-pointer hover:border-indigo-600 transition-all hover:shadow-2xl flex items-center justify-between active:scale-[0.98]">
                 <div className="flex items-center gap-6">
-                  <div className="bg-slate-50 p-5 rounded-2xl group-hover:bg-indigo-600 group-hover:text-white transition-all text-slate-400">
-                    <Building2 size={28}/>
+                  <div className="bg-slate-50 p-6 rounded-3xl group-hover:bg-indigo-600 group-hover:text-white transition-all text-slate-400 shadow-sm">
+                    <Building2 size={32}/>
                   </div>
                   <div>
-                    <h4 className="text-xl font-black text-indigo-950 uppercase leading-tight group-hover:text-indigo-600 transition-colors">{item.gad_activity}</h4>
-                    <p className="text-[10px] font-black text-indigo-500 mt-1 uppercase tracking-widest">{item.office_name}</p>
+                    <h4 className="text-2xl font-black text-indigo-950 uppercase leading-none group-hover:text-indigo-600 transition-colors tracking-tighter">{item.gad_activity}</h4>
+                    <p className="text-[11px] font-black text-indigo-400 mt-2 uppercase tracking-[0.2em]">{item.office_name}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-6">
-                    <span className={`text-[9px] font-black px-4 py-1.5 rounded-full border uppercase ${item.status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>{item.status}</span>
-                    <Eye size={24} className="text-slate-200 group-hover:text-indigo-500 transition-all" />
+                <div className="flex items-center gap-8">
+                    <div className="text-right hidden md:block">
+                        <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1">Budget Request</p>
+                        <p className="font-mono font-bold text-slate-600">₱{(item.total_mooe + item.total_ps + item.total_co).toLocaleString()}</p>
+                    </div>
+                    <span className={`text-[10px] font-black px-5 py-2 rounded-full border-2 uppercase tracking-widest ${
+                        item.status === 'Approved' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+                        item.status === 'For Revision' ? 'bg-amber-50 text-amber-500 border-amber-100' :
+                        'bg-indigo-50 text-indigo-600 border-indigo-100'
+                    }`}>
+                        {item.status}
+                    </span>
+                    <Eye size={28} className="text-slate-200 group-hover:text-indigo-600 transition-all mr-4" />
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="text-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
+                <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <ClipboardList size={32} className="text-slate-300" />
+                </div>
+                <p className="font-black text-slate-400 uppercase tracking-widest">No pending proposals found</p>
+              </div>
+            )}
           </div>
-        </>
+        </div>
       )}
     </div>
   );

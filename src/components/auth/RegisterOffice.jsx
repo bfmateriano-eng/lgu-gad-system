@@ -26,17 +26,17 @@ export default function RegisterOffice({ onLoginRedirect }) {
       if (authError) throw authError;
 
       if (authData.user) {
-        // 2. USE UPDATE INSTEAD OF INSERT
-        // The 500 error happens because a Database Trigger likely already 
-        // created a blank profile row. We now fill it with the form data.
+        // 2. OPTIMIZED: Use UPSERT to sync the real Office Name
+        // This overwrites the 'New Office' placeholder created by DB triggers.
         const { error: profileError } = await supabase
           .from('profiles')
-          .update({ 
+          .upsert({ 
+            id: authData.user.id, // Matches the Auth ID
             office_name: formData.officeName,
             role: formData.role,
-            is_approved: false 
-          })
-          .eq('id', authData.user.id);
+            is_approved: false, // Default to false for manual approval
+            updated_at: new Date()
+          });
 
         if (profileError) throw profileError;
 
@@ -117,7 +117,8 @@ export default function RegisterOffice({ onLoginRedirect }) {
                 onChange={(e) => setFormData({...formData, role: e.target.value})}
               >
                 <option value="User">Department Office (Planner)</option>
-                <option value="Admin">GAD Focal Point (Reviewer)</option>
+                <option value="GAD_UNIT">GAD Focal Point (Reviewer)</option>
+                <option value="LCE">Local Chief Executive (Mayor)</option>
               </select>
             </div>
           </div>
