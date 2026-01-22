@@ -37,3 +37,45 @@
 .print-header, .print-signatures {
   display: none;
 }
+
+@media print {
+  /* Set Page Size to Long Bond Paper */
+  @page {
+    size: 8.5in 13in;
+    margin: 0.5in;
+  }
+
+  body {
+    background-color: white !important;
+    font-size: 11pt; /* Optimized for readability on paper */
+  }
+
+  /* Hide navigation, buttons, and sidebars */
+  .print\:hidden, 
+  button, 
+  .history-sidebar,
+  .feedback-banner {
+    display: none !important;
+  }
+
+  /* Force single-column layout and remove shadows */
+  .max-w-7xl, .max-w-5xl {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .shadow-xl, .shadow-sm {
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+
+  /* Compact the spacing to fit one page */
+  .space-y-12 > * + * { margin-top: 1.5rem !important; }
+  .p-10, .p-12 { padding: 1.5rem !important; }
+  .rounded-\[3rem\], .rounded-\[2\.5rem\] { border-radius: 1rem !important; }
+
+  /* Ensure table doesn't break poorly */
+  table { page-break-inside: avoid; }
+}

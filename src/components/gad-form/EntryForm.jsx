@@ -2,23 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { 
   Plus, Trash2, Save, Target, Award, ArrowLeft, Send, 
-  Database, FileText, BarChart3, Layers, AlertTriangle, MessageCircle 
+  Database, FileText, BarChart3, Layers, AlertTriangle, MessageCircle, Landmark
 } from 'lucide-react';
 
 export default function EntryForm({ session, officeName, onCancel, initialData }) {
-  // Split state for the structured Gender Issue
+  // 1. Structured State for Gender Issue
   const [genderIssueDetails, setGenderIssueDetails] = useState({
     statement: '',
     data_evidence: '',
     source: ''
   });
 
+  // 2. Core Form Data (Restored relevant_program)
   const [formData, setFormData] = useState({
     focus_type: initialData?.focus_type || 'CLIENT-FOCUSED',
     ppa_category: initialData?.ppa_category || 'Client-Focused', 
     category_type: initialData?.category_type || 'GAD Mandated Program',
     gad_objective: initialData?.gad_objective || '',
-    relevant_program: initialData?.relevant_program || '',
+    relevant_program: initialData?.relevant_program || '', // restored field
     gad_activity: initialData?.gad_activity || '',
   });
 
@@ -26,32 +27,42 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
   const [budgetItems, setBudgetItems] = useState([{ item_description: '', amount: 0, fund_type: 'MOOE' }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // OPTIMIZATION 1b: Pull Sectional Remarks from the reviewer
+  // Pull Sectional Remarks from the reviewer
   const remarks = initialData?.sectional_comments || {};
 
-  // Parse existing data if editing or re-rendering
+  // 3. Effect to Parse and Map Initial Data
   useEffect(() => {
-    if (initialData?.gender_issue) {
-      const parts = initialData.gender_issue.split('\n');
-      setGenderIssueDetails({
-        statement: parts[0]?.replace('Issue: ', '') || '',
-        data_evidence: parts[1]?.replace('Data: ', '') || '',
-        source: parts[2]?.replace('Source: ', '') || ''
-      });
-    }
+    if (initialData) {
+      if (initialData.gender_issue) {
+        const parts = initialData.gender_issue.split('\n');
+        setGenderIssueDetails({
+          statement: parts[0]?.replace('Issue: ', '') || '',
+          data_evidence: parts[1]?.replace('Data: ', '') || '',
+          source: parts[2]?.replace('Source: ', '') || ''
+        });
+      }
 
-    if (initialData?.id) {
+      setFormData({
+        focus_type: initialData.focus_type || 'CLIENT-FOCUSED',
+        ppa_category: initialData.ppa_category || 'Client-Focused', 
+        category_type: initialData.category_type || 'GAD Mandated Program',
+        gad_objective: initialData.gad_objective || '',
+        relevant_program: initialData.relevant_program || '',
+        gad_activity: initialData.gad_activity || '',
+      });
+
       const fetchDetails = async () => {
         const { data: ind } = await supabase.from('ppa_indicators').select('*').eq('ppa_id', initialData.id);
         const { data: bud } = await supabase.from('ppa_budget_items').select('*').eq('ppa_id', initialData.id);
         if (ind && ind.length > 0) setIndicators(ind);
         if (bud && bud.length > 0) setBudgetItems(bud);
       };
-      fetchDetails();
+      
+      if (initialData.id) fetchDetails();
     }
   }, [initialData]);
 
-  // Calculate totals for MOOE, PS, and CO
+  // 4. Budget Calculation Logic
   const totals = budgetItems.reduce((acc, item) => {
     const val = parseFloat(item.amount) || 0;
     const type = item.fund_type.toLowerCase();
@@ -59,7 +70,8 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
     return acc;
   }, { mooe: 0, ps: 0, co: 0 });
 
-  // OPTIMIZATION 1b: Remark Badge Helper
+  const totalGADBudget = totals.mooe + totals.ps + totals.co;
+
   const RemarkBadge = ({ text }) => {
     if (!text) return null;
     return (
@@ -91,6 +103,7 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
         total_mooe: totals.mooe, 
         total_ps: totals.ps, 
         total_co: totals.co, 
+        gad_budget: totalGADBudget,
         user_id: session.user.id,
         status: statusType 
       };
@@ -109,7 +122,6 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
       await supabase.from('ppa_indicators').insert(indicators.map(ind => ({ ...ind, ppa_id: ppaId })));
       await supabase.from('ppa_budget_items').insert(budgetItems.map(item => ({ ...item, ppa_id: ppaId })));
 
-      // OPTIMIZATION 3: Add to History Tracer
       await supabase.from('ppa_history').insert([{
         ppa_id: ppaId,
         action_by: officeName,
@@ -126,66 +138,85 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
   };
 
   return (
-    <div className="p-8 md:p-12 animate-in fade-in duration-300">
+    <div className="p-4 md:p-12 animate-in fade-in duration-300">
       <button onClick={onCancel} className="mb-8 flex items-center gap-2 text-slate-400 hover:text-indigo-600 font-bold text-xs uppercase tracking-widest transition-colors">
         <ArrowLeft size={16} /> Back to Dashboard
       </button>
 
       {/* REVISION GUIDANCE HEADER */}
       {initialData?.status === 'For Revision' && (
-        <div className="mb-10 bg-amber-600 text-white p-6 rounded-[2.5rem] flex items-center gap-6 shadow-xl animate-in slide-in-from-left duration-500">
+        <div className="mb-10 bg-amber-600 text-white p-6 rounded-[2rem] flex items-center gap-6 shadow-xl animate-in slide-in-from-left duration-500">
             <MessageCircle size={32} className="text-amber-200" />
             <div>
                 <h3 className="font-black uppercase tracking-widest text-sm">Action Required: Revisions Noted</h3>
-                <p className="text-xs text-amber-50 font-medium">Please review the specific remarks highlighted in orange throughout the form before re-submitting.</p>
+                <p className="text-xs text-amber-50 font-medium leading-tight mt-1">Please review the specific remarks highlighted in orange before re-submitting.</p>
             </div>
         </div>
       )}
 
-      <div className="space-y-12 pb-20">
+      {/* MOBILE-OPTIMIZED VERTICAL FORM CONTAINER */}
+      <div className="max-w-3xl mx-auto space-y-12 pb-20">
+        
         {/* SECTION 01: CLASSIFICATION */}
         <section className="space-y-6">
           <h2 className="text-xl font-bold text-indigo-950 flex items-center gap-3 border-b pb-3 uppercase tracking-tighter">
             <span className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 text-sm font-black">01</span>
             Classification
           </h2>
-          <div className="grid md:grid-cols-3 gap-8">
+          
+          <div className="space-y-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PPA Category</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">PPA Category</label>
               <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-bold outline-none focus:border-indigo-500 text-indigo-600 appearance-none"
                 value={formData.ppa_category} onChange={(e) => setFormData({...formData, ppa_category: e.target.value})}>
                 <option value="Client-Focused">A. Client-Focused (External)</option>
                 <option value="Agency-Focused">B. Agency-Focused (Internal)</option>
               </select>
             </div>
+
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Focus Type</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Focus Type</label>
               <select className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-semibold outline-none focus:border-indigo-500 appearance-none"
                 value={formData.focus_type} onChange={(e) => setFormData({...formData, focus_type: e.target.value})}>
                 <option value="CLIENT-FOCUSED">CLIENT-FOCUSED</option>
                 <option value="ORGANIZATION-FOCUSED">ORGANIZATION-FOCUSED</option>
               </select>
             </div>
+
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">GAD Activity Name</label>
-              <input required className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-semibold outline-none focus:border-indigo-500"
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">GAD Activity Name</label>
+              <input required className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-semibold outline-none focus:border-indigo-500"
                 value={formData.gad_activity} onChange={(e) => setFormData({...formData, gad_activity: e.target.value})} />
               <RemarkBadge text={remarks.activities} />
+            </div>
+
+            {/* RESTORED FIELD: RELEVANT LGU PROGRAM */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Relevant LGU Program</label>
+              <div className="relative">
+                 <Landmark className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                 <input 
+                    placeholder="e.g. Social Welfare & Development Program"
+                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 pl-12 font-semibold outline-none focus:border-indigo-500"
+                    value={formData.relevant_program} 
+                    onChange={(e) => setFormData({...formData, relevant_program: e.target.value})} 
+                 />
+              </div>
             </div>
           </div>
         </section>
 
-        {/* SECTION 02: STRUCTURED GENDER ISSUE */}
+        {/* SECTION 02: GENDER ISSUE & EVIDENCE */}
         <section className="space-y-6">
           <h2 className="text-xl font-bold text-indigo-950 flex items-center gap-3 border-b pb-3 uppercase tracking-tighter">
             <span className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 text-sm font-black">02</span>
             Gender Issue & Evidence
           </h2>
           
-          <div className="grid gap-6 bg-slate-50 p-8 rounded-[2rem] border border-slate-200 shadow-inner">
+          <div className="flex flex-col gap-6 bg-slate-50 p-6 md:p-8 rounded-[2rem] border border-slate-200">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-2">
-                <FileText size={14} className="text-indigo-500"/> Gender Issue / GAD Mandate
+                <FileText size={14} className="text-indigo-500"/> Gender Issue / Mandate
               </label>
               <input 
                 placeholder="e.g. Lack of Livelihood Opportunity for OFW Families"
@@ -196,66 +227,62 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
               <RemarkBadge text={remarks.gender_issue} />
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-2">
-                  <BarChart3 size={14} className="text-emerald-500"/> Relevant Data / Evidence
-                </label>
-                <textarea 
-                  placeholder="e.g. 75% of 987 OFW Families reported no extra income"
-                  className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 font-semibold outline-none focus:border-indigo-500 min-h-[100px] resize-none"
-                  value={genderIssueDetails.data_evidence} 
-                  onChange={(e) => setGenderIssueDetails({...genderIssueDetails, data_evidence: e.target.value})} 
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-2">
-                  <Database size={14} className="text-amber-500"/> Source of Data
-                </label>
-                <input 
-                  placeholder="e.g. CBMS 2024 / Survey Result"
-                  className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 font-semibold outline-none focus:border-indigo-500"
-                  value={genderIssueDetails.source} 
-                  onChange={(e) => setGenderIssueDetails({...genderIssueDetails, source: e.target.value})} 
-                />
-              </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-2">
+                <BarChart3 size={14} className="text-emerald-500"/> Relevant Data / Evidence
+              </label>
+              <textarea 
+                placeholder="e.g. 75% of 987 OFW Families reported no extra income"
+                className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 font-semibold outline-none focus:border-indigo-500 min-h-[100px] resize-none"
+                value={genderIssueDetails.data_evidence} 
+                onChange={(e) => setGenderIssueDetails({...genderIssueDetails, data_evidence: e.target.value})} 
+              />
             </div>
-          </div>
 
-          <div className="space-y-2 pt-4">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">GAD Result Statement / Objective</label>
-            <textarea required className="w-full bg-slate-50 border-2 border-slate-100 rounded-3xl p-6 focus:border-indigo-500 outline-none font-medium resize-none min-h-[120px]"
-              value={formData.gad_objective} onChange={(e) => setFormData({...formData, gad_objective: e.target.value})} />
-            <RemarkBadge text={remarks.objectives} />
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-2">
+                <Database size={14} className="text-amber-500"/> Source of Data
+              </label>
+              <input 
+                placeholder="e.g. CBMS 2024 / Survey Result"
+                className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 font-semibold outline-none focus:border-indigo-500"
+                value={genderIssueDetails.source} 
+                onChange={(e) => setGenderIssueDetails({...genderIssueDetails, source: e.target.value})} 
+              />
+            </div>
+
+            <div className="space-y-2 pt-4">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">GAD Result Objective</label>
+              <textarea required className="w-full bg-white border-2 border-indigo-100 rounded-2xl p-6 focus:border-indigo-500 outline-none font-medium resize-none min-h-[120px]"
+                value={formData.gad_objective} onChange={(e) => setFormData({...formData, gad_objective: e.target.value})} />
+              <RemarkBadge text={remarks.objectives} />
+            </div>
           </div>
         </section>
 
         {/* SECTION 03: INDICATORS */}
         <section className="space-y-6">
           <div className="flex justify-between items-center border-b pb-3">
-            <h2 className="text-xl font-bold text-indigo-950 flex items-center gap-3 uppercase tracking-tighter">
-              <span className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 text-sm font-black">03</span>
-              Indicators & Targets
-            </h2>
+            <h2 className="text-xl font-bold text-indigo-950 uppercase tracking-tighter">03. Indicators</h2>
             <button type="button" onClick={() => setIndicators([...indicators, { indicator_text: '', target_text: '' }])} 
-              className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl flex items-center gap-2 border border-indigo-100 uppercase transition-all shadow-sm active:scale-95">
-              <Plus size={16} /> Add Indicator
+              className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100 uppercase transition-all shadow-sm active:scale-95">
+              <Plus size={16} /> Add
             </button>
           </div>
           <div className="space-y-4">
             {indicators.map((ind, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-4 items-center bg-slate-50/50 p-6 rounded-3xl border border-slate-200 shadow-sm">
-                <div className="col-span-12 md:col-span-7 space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2"><Target size={12}/> Success Indicator</label>
-                  <input required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-semibold outline-none focus:border-indigo-500 shadow-sm"
+              <div key={idx} className="flex flex-col gap-4 bg-slate-50/50 p-6 rounded-2xl border border-slate-200 relative">
+                <div className="space-y-1">
+                   <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Indicator</label>
+                   <input required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-semibold outline-none focus:border-indigo-500"
                     value={ind.indicator_text} onChange={(e) => { const newI = [...indicators]; newI[idx].indicator_text = e.target.value; setIndicators(newI); }} />
                 </div>
-                <div className="col-span-12 md:col-span-4 space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-2"><Award size={12}/> Target</label>
-                  <input required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-black outline-none focus:border-indigo-500 shadow-sm"
+                <div className="space-y-1">
+                   <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Target</label>
+                   <input required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-black outline-none focus:border-indigo-500"
                     value={ind.target_text} onChange={(e) => { const newI = [...indicators]; newI[idx].target_text = e.target.value; setIndicators(newI); }} />
                 </div>
-                <button type="button" onClick={() => setIndicators(indicators.filter((_, i) => i !== idx))} className="col-span-1 text-slate-300 hover:text-red-500 transition-colors pt-5 flex justify-end">
+                <button type="button" onClick={() => setIndicators(indicators.filter((_, i) => i !== idx))} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 transition-colors">
                   <Trash2 size={20} />
                 </button>
               </div>
@@ -265,62 +292,59 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
         </section>
 
         {/* SECTION 04: BUDGET */}
-        <section className="space-y-6 bg-slate-100 p-8 md:p-10 rounded-[3.5rem] border border-slate-200 shadow-sm">
+        <section className="space-y-6 bg-slate-100 p-6 md:p-10 rounded-[2.5rem] border border-slate-200">
           <div className="flex justify-between items-center border-b border-slate-200 pb-5">
-            <h2 className="text-xl font-bold text-indigo-950 flex items-center gap-3 uppercase tracking-tighter">
-              <span className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-600 text-white text-sm font-black">04</span>
-              Budget Breakdown
-            </h2>
+            <h2 className="text-xl font-bold text-indigo-950 uppercase tracking-tighter">04. Budget</h2>
             <button type="button" onClick={() => setBudgetItems([...budgetItems, { item_description: '', amount: 0, fund_type: 'MOOE' }])} 
-              className="bg-indigo-600 text-white px-6 py-2 rounded-2xl text-[10px] font-black hover:bg-indigo-700 flex items-center gap-2 shadow-xl uppercase transition-all active:scale-95">
-              <Plus size={16} /> Add Item
+              className="bg-indigo-600 text-white px-6 py-2 rounded-2xl text-[10px] font-black hover:bg-indigo-700 uppercase transition-all shadow-xl active:scale-95">
+              <Plus size={16} /> Add
             </button>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {budgetItems.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-4 items-center bg-white p-5 rounded-[1.5rem] border shadow-sm transition-all hover:shadow-md">
-                <div className="col-span-6">
-                  <input className="w-full text-sm font-semibold outline-none" 
-                    value={item.item_description} 
-                    placeholder="Expense description (e.g. Training Honorarium)" 
+              <div key={idx} className="flex flex-col gap-4 bg-white p-5 rounded-2xl border shadow-sm relative">
+                <div className="space-y-1">
+                   <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Description</label>
+                   <input className="w-full text-sm font-semibold outline-none" 
+                    value={item.item_description} placeholder="e.g. Training Meals" 
                     onChange={(e) => { const n = [...budgetItems]; n[idx].item_description = e.target.value; setBudgetItems(n); }} />
                 </div>
-                <div className="col-span-2">
-                  <select className="bg-slate-50 p-2 rounded-lg outline-none w-full text-[10px] font-black text-indigo-600 border border-slate-100 appearance-none text-center cursor-pointer" 
-                    value={item.fund_type} 
-                    onChange={(e) => { const n = [...budgetItems]; n[idx].fund_type = e.target.value; setBudgetItems(n); }}>
-                    <option value="MOOE">MOOE</option>
-                    <option value="PS">PS</option>
-                    <option value="CO">CO</option>
-                  </select>
+                <div className="flex gap-4">
+                   <div className="flex-1 space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Type</label>
+                      <select className="w-full bg-slate-50 p-3 rounded-xl text-[10px] font-black text-indigo-600" 
+                        value={item.fund_type} onChange={(e) => { const n = [...budgetItems]; n[idx].fund_type = e.target.value; setBudgetItems(n); }}>
+                        <option value="MOOE">MOOE</option><option value="PS">PS</option><option value="CO">CO</option>
+                      </select>
+                   </div>
+                   <div className="flex-1 space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1 text-right block">Amount</label>
+                      <input type="number" className="w-full bg-slate-50 p-3 rounded-xl font-bold text-right outline-none text-indigo-950" 
+                        value={item.amount} onChange={(e) => { const n = [...budgetItems]; n[idx].amount = e.target.value; setBudgetItems(n); }} />
+                   </div>
                 </div>
-                <div className="col-span-3 text-right font-mono font-bold text-indigo-900 border-l pl-4">
-                  ₱ <input type="number" className="w-24 text-right outline-none bg-transparent" 
-                    value={item.amount} 
-                    onChange={(e) => { const n = [...budgetItems]; n[idx].amount = e.target.value; setBudgetItems(n); }} />
-                </div>
-                <button type="button" onClick={() => setBudgetItems(budgetItems.filter((_, i) => i !== idx))} className="col-span-1 text-slate-200 hover:text-red-500 transition-colors flex justify-end">
+                <button type="button" onClick={() => setBudgetItems(budgetItems.filter((_, i) => i !== idx))} className="absolute top-4 right-4 text-slate-200 hover:text-red-500">
                   <Trash2 size={18} />
                 </button>
               </div>
             ))}
           </div>
-          <div className="pt-8 text-center bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-xl mt-6">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">Total Estimated GAD Amount</p>
-            <p className="text-4xl font-mono font-black text-indigo-900">₱ {(totals.mooe + totals.ps + totals.co).toLocaleString()}</p>
+          <div className="pt-8 text-center bg-white p-8 rounded-[2rem] border border-slate-200 shadow-xl mt-6">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">Total Request</p>
+            <p className="text-4xl font-mono font-black text-indigo-900">₱ {totalGADBudget.toLocaleString()}</p>
           </div>
           <RemarkBadge text={remarks.budget} />
         </section>
 
         {/* SUBMISSION ACTIONS */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 pb-20">
-          <button type="button" disabled={isSubmitting} onClick={() => handleSave('Draft')} 
-            className="w-full bg-white border-2 border-indigo-950 text-indigo-950 py-6 rounded-[2.5rem] font-black text-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-4 active:scale-95 disabled:opacity-50">
-            <Save size={24} /> {initialData?.id ? 'UPDATE DRAFT' : 'SAVE AS DRAFT'}
-          </button>
+        <div className="flex flex-col gap-4 pt-6 pb-20">
           <button type="button" disabled={isSubmitting} onClick={() => handleSave('Submitted')} 
-            className="w-full bg-[#1e1b4b] text-white py-6 rounded-[2.5rem] font-black text-xl hover:bg-indigo-950 transition-all flex items-center justify-center gap-4 shadow-2xl active:scale-95 disabled:opacity-50">
-            <Send size={24} /> {initialData?.id ? 'UPDATE & SUBMIT' : 'FINALIZE & SUBMIT'}
+            className="w-full bg-[#1e1b4b] text-white py-6 rounded-2xl font-black text-xl hover:bg-indigo-950 transition-all flex items-center justify-center gap-4 shadow-2xl active:scale-95 disabled:opacity-50">
+            <Send size={24} /> FINALIZE & SUBMIT
+          </button>
+          <button type="button" disabled={isSubmitting} onClick={() => handleSave('Draft')} 
+            className="w-full bg-white border-2 border-indigo-950 text-indigo-950 py-6 rounded-2xl font-black text-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-4 active:scale-95 disabled:opacity-50">
+            <Save size={24} /> SAVE AS DRAFT
           </button>
         </div>
       </div>
