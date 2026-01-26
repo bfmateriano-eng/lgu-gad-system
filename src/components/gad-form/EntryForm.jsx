@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { 
   Plus, Trash2, Save, Target, Award, ArrowLeft, Send, 
-  Database, FileText, BarChart3, Layers, AlertTriangle, MessageCircle, Landmark
+  Database, FileText, BarChart3, Layers, AlertTriangle, MessageCircle, Landmark,
+  GitMerge, ShieldCheck
 } from 'lucide-react';
 
 export default function EntryForm({ session, officeName, onCancel, initialData }) {
@@ -13,13 +14,13 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
     source: ''
   });
 
-  // 2. Core Form Data (Restored relevant_program)
+  // 2. Core Form Data (Includes restored Category Type)
   const [formData, setFormData] = useState({
     focus_type: initialData?.focus_type || 'CLIENT-FOCUSED',
     ppa_category: initialData?.ppa_category || 'Client-Focused', 
-    category_type: initialData?.category_type || 'GAD Mandated Program',
+    category_type: initialData?.category_type || 'Gender Issue', // Selection Field
     gad_objective: initialData?.gad_objective || '',
-    relevant_program: initialData?.relevant_program || '', // restored field
+    relevant_program: initialData?.relevant_program || '', 
     gad_activity: initialData?.gad_activity || '',
   });
 
@@ -45,7 +46,7 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
       setFormData({
         focus_type: initialData.focus_type || 'CLIENT-FOCUSED',
         ppa_category: initialData.ppa_category || 'Client-Focused', 
-        category_type: initialData.category_type || 'GAD Mandated Program',
+        category_type: initialData.category_type || 'Gender Issue',
         gad_objective: initialData.gad_objective || '',
         relevant_program: initialData.relevant_program || '',
         gad_activity: initialData.gad_activity || '',
@@ -190,7 +191,6 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
               <RemarkBadge text={remarks.activities} />
             </div>
 
-            {/* RESTORED FIELD: RELEVANT LGU PROGRAM */}
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Relevant LGU Program</label>
               <div className="relative">
@@ -214,12 +214,34 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
           </h2>
           
           <div className="flex flex-col gap-6 bg-slate-50 p-6 md:p-8 rounded-[2rem] border border-slate-200">
+            
+            {/* CATEGORY TYPE SELECTION (Gender Issue or GAD Mandate) */}
+            <div className="space-y-3 mb-4">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 block text-center">Is this derived from a Gender Issue or GAD Mandate?</label>
+              <div className="grid grid-cols-2 gap-2 bg-slate-200/50 p-1.5 rounded-2xl">
+                <button 
+                  type="button"
+                  onClick={() => setFormData({...formData, category_type: 'Gender Issue'})}
+                  className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black transition-all ${formData.category_type === 'Gender Issue' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}
+                >
+                  <GitMerge size={14} /> GENDER ISSUE
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setFormData({...formData, category_type: 'GAD Mandate'})}
+                  className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black transition-all ${formData.category_type === 'GAD Mandate' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}
+                >
+                  <ShieldCheck size={14} /> GAD MANDATE
+                </button>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-2">
-                <FileText size={14} className="text-indigo-500"/> Gender Issue / Mandate
+                <FileText size={14} className="text-indigo-500"/> {formData.category_type} Statement
               </label>
               <input 
-                placeholder="e.g. Lack of Livelihood Opportunity for OFW Families"
+                placeholder={`Enter the specific ${formData.category_type} statement`}
                 className="w-full bg-white border-2 border-slate-100 rounded-xl p-4 font-semibold outline-none focus:border-indigo-500"
                 value={genderIssueDetails.statement} 
                 onChange={(e) => setGenderIssueDetails({...genderIssueDetails, statement: e.target.value})} 
@@ -252,7 +274,7 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
             </div>
 
             <div className="space-y-2 pt-4">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">GAD Result Objective</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">GAD Result Objective</label>
               <textarea required className="w-full bg-white border-2 border-indigo-100 rounded-2xl p-6 focus:border-indigo-500 outline-none font-medium resize-none min-h-[120px]"
                 value={formData.gad_objective} onChange={(e) => setFormData({...formData, gad_objective: e.target.value})} />
               <RemarkBadge text={remarks.objectives} />
@@ -271,15 +293,15 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
           </div>
           <div className="space-y-4">
             {indicators.map((ind, idx) => (
-              <div key={idx} className="flex flex-col gap-4 bg-slate-50/50 p-6 rounded-2xl border border-slate-200 relative">
+              <div key={idx} className="flex flex-col gap-4 bg-slate-50/50 p-6 rounded-2xl border border-slate-200 relative shadow-sm">
                 <div className="space-y-1">
-                   <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Indicator</label>
-                   <input required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-semibold outline-none focus:border-indigo-500"
+                   <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Indicator</label>
+                   <input required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-semibold outline-none focus:border-indigo-500 shadow-inner"
                     value={ind.indicator_text} onChange={(e) => { const newI = [...indicators]; newI[idx].indicator_text = e.target.value; setIndicators(newI); }} />
                 </div>
                 <div className="space-y-1">
-                   <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Target</label>
-                   <input required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-black outline-none focus:border-indigo-500"
+                   <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Target</label>
+                   <input required className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-black outline-none focus:border-indigo-500 shadow-inner"
                     value={ind.target_text} onChange={(e) => { const newI = [...indicators]; newI[idx].target_text = e.target.value; setIndicators(newI); }} />
                 </div>
                 <button type="button" onClick={() => setIndicators(indicators.filter((_, i) => i !== idx))} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 transition-colors">
@@ -292,7 +314,7 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
         </section>
 
         {/* SECTION 04: BUDGET */}
-        <section className="space-y-6 bg-slate-100 p-6 md:p-10 rounded-[2.5rem] border border-slate-200">
+        <section className="space-y-6 bg-slate-100 p-6 md:p-10 rounded-[2.5rem] border border-slate-200 shadow-inner">
           <div className="flex justify-between items-center border-b border-slate-200 pb-5">
             <h2 className="text-xl font-bold text-indigo-950 uppercase tracking-tighter">04. Budget</h2>
             <button type="button" onClick={() => setBudgetItems([...budgetItems, { item_description: '', amount: 0, fund_type: 'MOOE' }])} 
@@ -304,22 +326,22 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
             {budgetItems.map((item, idx) => (
               <div key={idx} className="flex flex-col gap-4 bg-white p-5 rounded-2xl border shadow-sm relative">
                 <div className="space-y-1">
-                   <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Description</label>
+                   <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Expense Description</label>
                    <input className="w-full text-sm font-semibold outline-none" 
                     value={item.item_description} placeholder="e.g. Training Meals" 
                     onChange={(e) => { const n = [...budgetItems]; n[idx].item_description = e.target.value; setBudgetItems(n); }} />
                 </div>
                 <div className="flex gap-4">
                    <div className="flex-1 space-y-1">
-                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1">Type</label>
-                      <select className="w-full bg-slate-50 p-3 rounded-xl text-[10px] font-black text-indigo-600" 
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1 tracking-widest">Fund Source</label>
+                      <select className="w-full bg-slate-50 p-3 rounded-xl text-[10px] font-black text-indigo-600 appearance-none text-center cursor-pointer" 
                         value={item.fund_type} onChange={(e) => { const n = [...budgetItems]; n[idx].fund_type = e.target.value; setBudgetItems(n); }}>
                         <option value="MOOE">MOOE</option><option value="PS">PS</option><option value="CO">CO</option>
                       </select>
                    </div>
                    <div className="flex-1 space-y-1">
-                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1 text-right block">Amount</label>
-                      <input type="number" className="w-full bg-slate-50 p-3 rounded-xl font-bold text-right outline-none text-indigo-950" 
+                      <label className="text-[9px] font-black text-slate-400 uppercase ml-1 text-right block tracking-widest">Amount (₱)</label>
+                      <input type="number" className="w-full bg-slate-50 p-3 rounded-xl font-bold text-right outline-none text-indigo-950 shadow-inner" 
                         value={item.amount} onChange={(e) => { const n = [...budgetItems]; n[idx].amount = e.target.value; setBudgetItems(n); }} />
                    </div>
                 </div>
@@ -330,7 +352,7 @@ export default function EntryForm({ session, officeName, onCancel, initialData }
             ))}
           </div>
           <div className="pt-8 text-center bg-white p-8 rounded-[2rem] border border-slate-200 shadow-xl mt-6">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">Total Request</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-1">Total Estimated GAD Amount</p>
             <p className="text-4xl font-mono font-black text-indigo-900">₱ {totalGADBudget.toLocaleString()}</p>
           </div>
           <RemarkBadge text={remarks.budget} />

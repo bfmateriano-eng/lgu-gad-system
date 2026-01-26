@@ -71,7 +71,7 @@ export default function Dashboard({ session, onAddNew, onEdit, officeName }) {
     }
   };
 
-  // --- DETAIL VIEW RENDER (Optimized for 8.5x13 Print) ---
+  // --- DETAIL VIEW RENDER ---
   if (selectedProposal) {
     return (
       <div className="p-4 md:p-12 space-y-6 animate-in fade-in duration-300 pb-24 print:p-0 print:m-0">
@@ -103,9 +103,7 @@ export default function Dashboard({ session, onAddNew, onEdit, officeName }) {
           </div>
         </div>
 
-        {/* PRINT DOCUMENT CONTENT */}
         <div className="max-w-5xl mx-auto space-y-6 print:space-y-4">
-          
           {/* Official Document Header */}
           <div className="border-b-4 border-indigo-950 pb-4 flex justify-between items-end print:border-b-2">
             <div className="space-y-1">
@@ -142,12 +140,6 @@ export default function Dashboard({ session, onAddNew, onEdit, officeName }) {
                     <p className="text-[8px] font-black text-indigo-400 uppercase mb-1">GAD Objective</p>
                     <p className="text-sm font-bold text-indigo-950 leading-snug">{selectedProposal.gad_objective}</p>
                   </div>
-                  {selectedProposal.relevant_program && (
-                    <div className="pt-2 border-t border-slate-100">
-                      <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Relevant LGU Program</p>
-                      <p className="text-xs font-semibold text-slate-600">{selectedProposal.relevant_program}</p>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -203,7 +195,7 @@ export default function Dashboard({ session, onAddNew, onEdit, officeName }) {
                 </div>
               </div>
 
-              {/* 4. Signature Block - Only Visible on Print */}
+              {/* Signatures for Print */}
               <div className="hidden print:grid grid-cols-2 gap-12 pt-10 pb-4">
                 <div className="border-t-2 border-slate-900 pt-2">
                   <p className="text-[9px] font-black uppercase mb-8 tracking-widest">Prepared By:</p>
@@ -216,26 +208,38 @@ export default function Dashboard({ session, onAddNew, onEdit, officeName }) {
                   <p className="text-[8px] font-bold text-slate-500 uppercase">Local Government Unit of Pililla</p>
                 </div>
               </div>
-
             </div>
 
-            {/* SIDEBAR - Hidden on Print */}
+            {/* SIDEBAR - PPA TRACER LOG (Updated with WHO info) */}
             <div className="lg:col-span-1 space-y-6 print:hidden">
-               {/* PPA TRACER LOG */}
                <div className="bg-white border-2 border-slate-100 rounded-[2.5rem] p-8 shadow-xl space-y-6">
                   <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
                     <History className="text-indigo-600" size={20} />
                     <h3 className="font-black uppercase tracking-widest text-[10px] text-slate-900">PPA Lifecycle Tracer</h3>
                   </div>
                   <div className="space-y-6 max-h-[500px] overflow-y-auto pr-2">
-                      {history.map((h, i) => (
+                      {history.length === 0 ? (
+                        <p className="text-[10px] text-slate-400 italic">No history recorded.</p>
+                      ) : (
+                        history.map((h, i) => (
                           <div key={i} className="relative pl-6 border-l-2 border-indigo-100 py-1">
-                              <div className="absolute -left-[9px] top-2 w-4 h-4 rounded-full bg-indigo-600 border-4 border-white"></div>
-                              <p className="text-[10px] font-black text-indigo-900 uppercase tracking-tighter">{h.action_type}</p>
-                              <p className="text-[9px] text-slate-400 font-bold mb-1">{new Date(h.created_at).toLocaleString()}</p>
-                              <p className="text-[10px] text-slate-500 leading-tight">{h.change_summary}</p>
+                              <div className="absolute -left-[9px] top-2 w-4 h-4 rounded-full bg-indigo-600 border-4 border-white shadow-sm"></div>
+                              <div className="flex flex-col gap-1">
+                                <p className="text-[10px] font-black text-indigo-900 uppercase tracking-tighter">{h.action_type}</p>
+                                <p className="text-[9px] text-slate-400 font-bold">{new Date(h.created_at).toLocaleString()}</p>
+                                <p className="text-[10px] text-slate-500 leading-tight">{h.change_summary}</p>
+                                
+                                {/* Action By Badge */}
+                                <div className="mt-2 flex items-center gap-1.5">
+                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Action By:</span>
+                                  <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-md text-[9px] font-black border border-indigo-100 uppercase">
+                                    {h.action_by || 'System'}
+                                  </span>
+                                </div>
+                              </div>
                           </div>
-                      ))}
+                        ))
+                      )}
                   </div>
                </div>
             </div>
